@@ -112,8 +112,9 @@ fn update_access_flags(access_flags: u32) -> u32 {
 // returns access_flags length to be used as a further offset
 unsafe fn update_access_flags_uleb128(ptr: *mut u8) -> u8 {
     let access_flags = read_uleb128(ptr, 0).unwrap();
-
     let new_flags = update_access_flags(access_flags.value);
+    if access_flags.value == new_flags { return access_flags.length; } // Skip bc identical
+
     let new_flags_uleb128 = write_uleb128(new_flags);
 
     if new_flags_uleb128.len() > access_flags.length as usize {

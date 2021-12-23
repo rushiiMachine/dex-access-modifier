@@ -1,6 +1,6 @@
 package com.github.diamondminer88.dexaccessmodifier
 
-class DexAccessModifier {
+class DexAccessModifier(logLevel: String) {
     private companion object {
         var initialized: Boolean = false
     }
@@ -8,7 +8,8 @@ class DexAccessModifier {
     init {
         if (!initialized) {
             System.loadLibrary("dexaccessmodifier")
-            init("info")
+            init(logLevel)
+            initialized = true
         }
     }
 

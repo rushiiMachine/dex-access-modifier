@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
         val list = findViewById<LinearLayout>(R.id.list)
         File(basePath).listFiles()
             ?.filter { it.extension == "dex" }
+            ?.filterNot { it.nameWithoutExtension.endsWith("_modified") }
             ?.forEach { f ->
                 list.addView(Button(baseContext).apply {
                     layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)

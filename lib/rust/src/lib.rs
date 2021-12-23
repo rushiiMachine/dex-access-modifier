@@ -14,7 +14,7 @@ pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAcces
 ) {
     android_logd_logger::builder()
         .parse_filters(env.get_string(log_level).unwrap().to_str().unwrap())
-        .tag("DexModifier")
+        .tag("DexAccessModifier")
         .prepend_module(true)
         .init();
 }

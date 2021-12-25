@@ -35,7 +35,8 @@ class MainActivity : AppCompatActivity() {
                             Log.i("DexAccessModifier", "Starting...")
                             lib.run(
                                 f.absolutePath,
-                                "$basePath/${f.nameWithoutExtension}_modified.dex"
+                                "$basePath/${f.nameWithoutExtension}_modified.dex",
+                                arrayOf("Landroid/", "Lcom/discord/app/App;")
                             )
                             Log.i("DexAccessModifier", "Finished...")
                         }.start()

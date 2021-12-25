@@ -1,9 +1,11 @@
 use std::fs;
+use std::ptr::slice_from_raw_parts;
 use std::time::SystemTime;
 
 use adler32::RollingAdler32;
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
+use jni::sys::jobjectArray;
 use log::{debug, info, warn};
 
 #[no_mangle]
@@ -21,9 +23,16 @@ pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAcces
 
 #[no_mangle]
 #[allow(unaligned_references)]
-pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString) {
+pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString, class_filters_: jobjectArray) {
     let input_path: String = env.get_string(input_path_).unwrap().into();
     let output_path: String = env.get_string(output_path_).unwrap().into();
+
+    let mut class_filters = vec![];
+    for i in 0..(env.get_array_length(class_filters_).unwrap()) {
+        let elem: JString = env.get_object_array_element(class_filters_, i).unwrap().into();
+        let filter: String = env.get_string(elem).unwrap().into();
+        class_filters.push(filter);
+    }
 
     let bytes = match fs::read(input_path.clone()) {
         Ok(data) => data,
@@ -44,16 +53,35 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
 
     if header.class_defs_offset == 0 { return; } // no class defs
 
+    let mut ignored_type_id_idxs = vec![];
+    if !class_filters.is_empty() && header.string_ids_offset != 0 && header.type_ids_offset != 0 {
+        for type_id_idx in 0..(header.type_ids_size) {
+            let type_id = *(u32_ptr_offset(bytes.as_ptr(), header.type_ids_offset + type_id_idx * 4) as *const u32);
+            let string_data_offset = *(u32_ptr_offset(bytes.as_ptr(), header.string_ids_offset + type_id * 4) as *const u32);
+
+            let string_length_uleb = read_uleb128(bytes.as_ptr(), string_data_offset).unwrap();
+            let string_data = &*slice_from_raw_parts(u32_ptr_offset(bytes.as_ptr(), string_data_offset + string_length_uleb.length as u32), string_length_uleb.value as usize);
+            for filter in class_filters.iter() {
+                if string_data.starts_with(filter.as_bytes()) {
+                    ignored_type_id_idxs.push(type_id_idx);
+                }
+            }
+        }
+    }
+
+    debug!("Ignored type ids: {:?}", ignored_type_id_idxs);
+
     let class_defs_ptr = u32_ptr_offset(bytes.as_ptr(), header.class_defs_offset);
     for class_def_idx in 0..(header.class_defs_size) {
-        let item = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
+        let class_def = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
+        if ignored_type_id_idxs.contains(&class_def.class_idx) { continue; } // Class ignored
 
-        item.access_flags = update_access_flags(item.access_flags);
+        class_def.access_flags = update_access_flags(class_def.access_flags);
 
-        debug!("Parsing class at offset: {:#04x}", item.class_data_offset);
-        if item.class_data_offset == 0 { continue; } // no data for this class
+        debug!("Parsing class at offset: {:#04x}", class_def.class_data_offset);
+        if class_def.class_data_offset == 0 { continue; } // no data for this class
 
-        let class_data_ptr = u32_ptr_offset(bytes.as_ptr(), item.class_data_offset);
+        let class_data_ptr = u32_ptr_offset(bytes.as_ptr(), class_def.class_data_offset);
         let mut offset = 0u32;
 
         let static_fields_size = read_uleb128(class_data_ptr, offset).unwrap();
@@ -67,7 +95,6 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
 
         debug!("Static fields: {0}, Instance fields: {1}, Direct methods: {2}, Virtual methods: {3}", static_fields_size.value, instance_fields_size.value, direct_methods_size.value, virtual_methods_size.value);
 
-        debug!("Changing field flags...");
         for _ in 0..(static_fields_size.value + instance_fields_size.value) {
             let field_idx_diff = read_uleb128(class_data_ptr, offset).unwrap();
             offset += field_idx_diff.length as u32;
@@ -76,7 +103,6 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
             offset += access_flags_length as u32;
         }
 
-        debug!("Changing method flags...");
         for _ in 0..(direct_methods_size.value + virtual_methods_size.value) {
             let method_idx_diff = read_uleb128(class_data_ptr, offset).unwrap();
             offset += method_idx_diff.length as u32;
@@ -183,8 +209,8 @@ unsafe fn read_uleb128(mut ptr: *const u8, offset: u32) -> Option<ULeb128Read> {
     }
 }
 
-fn u32_ptr_offset(ptr: *const u8, offset: u32) -> *mut u8 {
-    unsafe { ptr.offset(offset as isize) as *mut u8 }
+fn u32_ptr_offset<T>(ptr: *const T, offset: u32) -> *mut T {
+    unsafe { ptr.offset(offset as isize) as *mut T }
 }
 
 // convert ptr + offset pointing to data to a struct

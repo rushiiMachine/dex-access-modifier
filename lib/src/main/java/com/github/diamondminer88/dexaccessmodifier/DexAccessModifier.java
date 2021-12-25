@@ -27,8 +27,7 @@ public class DexAccessModifier {
      * @param inputPath Input file
      * @param outputPath Output file
      * @param classFilters Classes to ignore from modifying. Each class will be checked if it STARTS WITH one of the filters.
-     * Example: "Landroid/", "Lcom/discord/app/App;".
-     * This is important especially in apks, to ignore "Landroid" otherwise the app will crash.
+     * Example: "Landroid", "Lcom/discord/app/App;".
      */
     public native void run(String inputPath, String outputPath, String[] classFilters);
 }

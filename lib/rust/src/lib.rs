@@ -16,8 +16,7 @@ pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAcces
 ) {
     android_logd_logger::builder()
         .parse_filters(env.get_string(log_level).unwrap().to_str().unwrap())
-        .tag("DexAccessModifier")
-        .prepend_module(true)
+        .prepend_module(false)
         .init();
 }
 
@@ -75,7 +74,6 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
     for class_def_idx in 0..(header.class_defs_size) {
         let class_def = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
         if ignored_type_id_idxs.contains(&class_def.class_idx) { continue; } // Class ignored
-
         class_def.access_flags = update_access_flags(class_def.access_flags);
 
         debug!("Parsing class at offset: {:#04x}", class_def.class_data_offset);
@@ -99,7 +97,7 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
             let field_idx_diff = read_uleb128(class_data_ptr, offset).unwrap();
             offset += field_idx_diff.length as u32;
 
-            let access_flags_length = update_access_flags_uleb128(u32_ptr_offset(class_data_ptr, offset));
+            let access_flags_length = update_access_flags_uleb128(u32_ptr_offset(class_data_ptr, offset), false);
             offset += access_flags_length as u32;
         }
 
@@ -107,7 +105,7 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
             let method_idx_diff = read_uleb128(class_data_ptr, offset).unwrap();
             offset += method_idx_diff.length as u32;
 
-            let access_flags_length = update_access_flags_uleb128(u32_ptr_offset(class_data_ptr, offset));
+            let access_flags_length = update_access_flags_uleb128(u32_ptr_offset(class_data_ptr, offset), true);
             offset += access_flags_length as u32;
 
             let code_off = read_uleb128(class_data_ptr, offset).unwrap();
@@ -136,8 +134,12 @@ fn update_access_flags(access_flags: u32) -> u32 {
 }
 
 // returns access_flags length to be used as a further offset
-unsafe fn update_access_flags_uleb128(ptr: *mut u8) -> u8 {
+unsafe fn update_access_flags_uleb128(ptr: *mut u8, is_method: bool) -> u8 {
     let access_flags = read_uleb128(ptr, 0).unwrap();
+
+    // skip private instance methods
+    if is_method && access_flags.value & (access_flags::ACC_STATIC | access_flags::ACC_CONSTRUCTOR | access_flags::ACC_PRIVATE) == access_flags::ACC_PRIVATE { return access_flags.length; }
+
     let new_flags = update_access_flags(access_flags.value);
     if access_flags.value == new_flags { return access_flags.length; } // Skip bc identical
 
@@ -263,34 +265,6 @@ mod endian_constants {
     pub const LITTLE_ENDIAN: u32 = 0x12345678;
     pub const BIG_ENDIAN: u32 = 0x78563412;
 }
-
-// #[allow(unused)]
-// mod type_codes {
-//     pub const TYPE_HEADER_ITEM: u32 = 0x0000;
-//     pub const TYPE_STRING_ID_ITEM: u32 = 0x0001;
-//     pub const TYPE_TYPE_ID_ITEM: u32 = 0x0002;
-//     pub const TYPE_PROTO_ID_ITEM: u32 = 0x0003;
-//     pub const TYPE_FIELD_ID_ITEM: u32 = 0x0004;
-//     pub const TYPE_METHOD_ID_ITEM: u32 = 0x0005;
-//     pub const TYPE_CLASS_DEF_ITEM: u32 = 0x0006;
-//     pub const TYPE_CALL_SITE_ID_ITEM: u32 = 0x0007;
-//     pub const TYPE_METHOD_HANDLE_ITEM: u32 = 0x0008;
-//
-//     pub const TYPE_MAP_LIST: u32 = 0x1000;
-//     pub const TYPE_TYPE_LIST: u32 = 0x1001;
-//     pub const TYPE_ANNOTATION_SET_REF_LIST: u32 = 0x1002;
-//     pub const TYPE_ANNOTATION_SET_ITEM: u32 = 0x1003;
-//
-//     pub const TYPE_CLASS_DATA_ITEM: u32 = 0x2000;
-//     pub const TYPE_CODE_ITEM: u32 = 0x2001;
-//     pub const TYPE_STRING_DATA_ITEM: u32 = 0x2002;
-//     pub const TYPE_DEBUG_INFO_ITEM: u32 = 0x2003;
-//     pub const TYPE_ANNOTATION_ITEM: u32 = 0x2004;
-//     pub const TYPE_ENCODED_ARRAY_ITEM: u32 = 0x2005;
-//     pub const TYPE_ANNOTATIONS_DIRECTORY_ITEM: u32 = 0x2006;
-//
-//     pub const TYPE_HIDDENAPI_CLASS_DATA_ITEM: u32 = 0xF000;
-// }
 
 #[allow(unused)]
 mod access_flags {

@@ -1,5 +1,4 @@
 use std::{fs, panic};
-use std::any::type_name;
 use std::ptr::slice_from_raw_parts;
 use std::time::SystemTime;
 
@@ -147,8 +146,6 @@ unsafe fn modify_dex(bytes: &Vec<u8>, class_filters: Vec<String>) {
 
     header.checksum = RollingAdler32::from_buffer(&bytes[12..]).hash();
 }
-
-fn type_of<T>(_: T) -> &'static str { type_name::<T>() }
 
 fn update_access_flags(access_flags: u32) -> u32 {
     return (access_flags & !(access_flags::ACC_PRIVATE | access_flags::ACC_PROTECTED)) | access_flags::ACC_PUBLIC;

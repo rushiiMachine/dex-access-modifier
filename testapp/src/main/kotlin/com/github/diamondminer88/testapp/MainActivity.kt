@@ -3,10 +3,13 @@ package com.github.diamondminer88.testapp
 import android.Manifest
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.github.diamondminer88.dexaccessmodifier.DexAccessModifier
@@ -33,11 +36,19 @@ class MainActivity : AppCompatActivity() {
                     setOnClickListener {
                         Thread {
                             Log.i("DexAccessModifier", "Starting...")
-                            lib.run(
-                                f.absolutePath,
-                                "$basePath/${f.nameWithoutExtension}_modified.dex",
-                                arrayOf("Landroid", "Lcom/discord/app/App;")
-                            )
+                            try {
+                                lib.run(
+                                    f.absolutePath,
+                                    "$basePath/${f.nameWithoutExtension}_modified.dex",
+                                    arrayOf("Landroid", "Lcom/discord/app/App;")
+                                )
+                            } catch (t: Throwable) {
+                                t.printStackTrace()
+                                Handler(Looper.getMainLooper()).post {
+                                    Toast.makeText(context, t.message, Toast.LENGTH_LONG)
+                                        .show()
+                                }
+                            }
                             Log.i("DexAccessModifier", "Finished...")
                         }.start()
                     }

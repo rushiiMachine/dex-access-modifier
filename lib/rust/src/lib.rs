@@ -49,13 +49,15 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
 
     let now = SystemTime::now();
     let result = panic::catch_unwind(|| { modify_dex(&bytes, class_filters) });
-    if let Err(panic) = result {
-        let err_str = match panic.downcast::<String>() {
-            Ok(err) => *err,
-            // TODO: fix error printing
-            Err(err) => format!("panic with unknown error: {0}", type_of(&err)),
+    if let Err(error) = result {
+        let msg = match error.downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match error.downcast_ref::<String>() {
+                Some(s) => &**s,
+                None => "Box<Any>",
+            },
         };
-        env.throw(err_str).unwrap();
+        env.throw(format!("Panic: {}", msg)).unwrap();
         return;
     }
     info!("Modified file {0} in {1}ms", input_path, now.elapsed().unwrap().as_millis());

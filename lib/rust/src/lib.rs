@@ -1,4 +1,5 @@
-use std::fs;
+use std::{fs, panic};
+use std::any::type_name;
 use std::ptr::slice_from_raw_parts;
 use std::time::SystemTime;
 
@@ -7,6 +8,12 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JString};
 use jni::sys::jobjectArray;
 use log::{debug, info, warn};
+
+use crate::structures::structures::{ClassDefItem, DexFileHeader};
+use crate::uleb128::uleb128::{read_uleb128, write_uleb128};
+
+mod uleb128;
+mod structures;
 
 #[no_mangle]
 pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_init(
@@ -21,7 +28,6 @@ pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAcces
 }
 
 #[no_mangle]
-#[allow(unaligned_references)]
 pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString, class_filters_: jobjectArray) {
     let input_path: String = env.get_string(input_path_).unwrap().into();
     let output_path: String = env.get_string(output_path_).unwrap().into();
@@ -42,12 +48,32 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
     };
 
     let now = SystemTime::now();
+    let result = panic::catch_unwind(|| { modify_dex(&bytes, class_filters) });
+    if let Err(panic) = result {
+        let err_str = match panic.downcast::<String>() {
+            Ok(err) => *err,
+            // TODO: fix error printing
+            Err(err) => format!("panic with unknown error: {0}", type_of(&err)),
+        };
+        env.throw(err_str).unwrap();
+        return;
+    }
+    info!("Modified file {0} in {1}ms", input_path, now.elapsed().unwrap().as_millis());
 
+    match fs::write(output_path, &bytes) {
+        Err(err) => {
+            env.throw(format!("Failed to write to file: {0}", err.to_string())).unwrap();
+        }
+        _ => {}
+    }
+}
+
+#[allow(unaligned_references)]
+unsafe fn modify_dex(bytes: &Vec<u8>, class_filters: Vec<String>) {
     let header = ptr_to_struct_with_offset::<DexFileHeader>(bytes.as_ptr(), 0);
 
     if header.endian_tag != endian_constants::LITTLE_ENDIAN {
-        env.throw("cannot handle big endian dex files").unwrap();
-        return;
+        panic!("cannot handle big endian dex files");
     }
 
     if header.class_defs_offset == 0 { return; } // no class defs
@@ -118,16 +144,9 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
     header.signature = hasher.digest().bytes();
 
     header.checksum = RollingAdler32::from_buffer(&bytes[12..]).hash();
-
-    info!("Modified file {0} in {1}ms", input_path, now.elapsed().unwrap().as_millis());
-
-    match fs::write(output_path, &bytes) {
-        Err(err) => {
-            env.throw(format!("Failed to write to file: {0}", err.to_string())).unwrap();
-        }
-        _ => {}
-    }
 }
+
+fn type_of<T>(_: T) -> &'static str { type_name::<T>() }
 
 fn update_access_flags(access_flags: u32) -> u32 {
     return (access_flags & !(access_flags::ACC_PRIVATE | access_flags::ACC_PROTECTED)) | access_flags::ACC_PUBLIC;
@@ -160,57 +179,6 @@ unsafe fn update_access_flags_uleb128(ptr: *mut u8, is_method: bool) -> u8 {
     return access_flags.length;
 }
 
-fn write_uleb128(mut val: u32) -> Vec<u8> {
-    const CONTINUATION_BIT: u8 = 0x80;
-    let mut buf = Vec::new();
-    loop {
-        let mut byte = (val as u8 & std::u8::MAX) & !CONTINUATION_BIT;
-        val >>= 7;
-        if val != 0 {
-            byte |= CONTINUATION_BIT;
-        }
-
-        buf.push(byte);
-
-        if val == 0 {
-            return buf;
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ULeb128Read {
-    value: u32,
-    length: u8,
-}
-
-unsafe fn read_uleb128(mut ptr: *const u8, offset: u32) -> Option<ULeb128Read> {
-    const CONTINUATION_BIT: u8 = 0x80;
-    ptr = ptr.offset(offset as isize);
-
-    let mut length = 0u8;
-    let mut result = 0;
-    let mut shift = 0;
-
-    loop {
-        let byte = *ptr.offset(length as isize);
-        length += 1;
-
-        if shift == 63 && byte != 0x00 && byte != 0x01 {
-            return None;
-        }
-
-        let low_bits = (byte & !CONTINUATION_BIT) as u32;
-        result |= low_bits << shift;
-
-        if byte & CONTINUATION_BIT == 0 {
-            return Some(ULeb128Read { value: result, length });
-        }
-
-        shift += 7;
-    }
-}
-
 fn u32_ptr_offset<T>(ptr: *const T, offset: u32) -> *mut T {
     unsafe { ptr.offset(offset as isize) as *mut T }
 }
@@ -219,45 +187,6 @@ fn u32_ptr_offset<T>(ptr: *const T, offset: u32) -> *mut T {
 fn ptr_to_struct_with_offset<T>(ptr: *const u8, offset: u32) -> &'static mut T {
     let new_ptr = u32_ptr_offset(ptr, offset) as *mut T;
     unsafe { &mut *new_ptr }
-}
-
-#[repr(C, packed)]
-struct DexFileHeader {
-    magic: u64,
-    checksum: u32,
-    signature: [u8; 20],
-    file_size: u32,
-    header_size: u32,
-    endian_tag: u32,
-    link_size: u32,
-    link_offset: u32,
-    map_offset: u32,
-    string_ids_size: u32,
-    string_ids_offset: u32,
-    type_ids_size: u32,
-    type_ids_offset: u32,
-    proto_ids_size: u32,
-    proto_ids_offset: u32,
-    field_ids_size: u32,
-    field_ids_offset: u32,
-    method_ids_size: u32,
-    method_ids_offset: u32,
-    class_defs_size: u32,
-    class_defs_offset: u32,
-    data_size: u32,
-    data_offset: u32,
-}
-
-#[repr(C, packed)]
-struct ClassDefItem {
-    class_idx: u32,
-    access_flags: u32,
-    superclass_idx: u32,
-    interfaces_offset: u32,
-    source_file_idx: u32,
-    annotations_offset: u32,
-    class_data_offset: u32,
-    static_values_offset: u32,
 }
 
 #[allow(unused)]

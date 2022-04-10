@@ -1,3 +1,4 @@
+group = "com.github.diamondminer88"
 version = "1.0.0"
 
 plugins {
@@ -16,9 +17,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFile("proguard-rules.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -33,6 +34,6 @@ cargo {
 }
 
 tasks.whenTaskAdded {
-    if (listOf("javaPreCompileDebug", "javaPreCompileRelease").contains(this.name))
+    if (listOf("mergeDebugJniLibFolders", "mergeReleaseJniLibFolders").contains(this.name))
         dependsOn("cargoBuild")
 }

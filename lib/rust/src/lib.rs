@@ -80,7 +80,6 @@ unsafe fn modify_dex(bytes: &Vec<u8>) {
         let class_def = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
 
         class_def.access_flags = update_access_flags(class_def.access_flags);
-        class_def.access_flags = class_def.access_flags & !access_flags::ACC_FINAL;
 
         debug!("Parsing class at offset: {:#04x}", class_def.class_data_offset);
         if class_def.class_data_offset == 0 { continue; } // no data for this class
@@ -127,7 +126,7 @@ unsafe fn modify_dex(bytes: &Vec<u8>) {
 }
 
 fn update_access_flags(access_flags: u32) -> u32 {
-    return (access_flags & !(access_flags::ACC_PRIVATE | access_flags::ACC_PROTECTED)) | access_flags::ACC_PUBLIC;
+    return (access_flags & !(access_flags::ACC_PRIVATE | access_flags::ACC_PROTECTED | access_flags::ACC_FINAL)) | access_flags::ACC_PUBLIC;
 }
 
 // returns access_flags length to be used as a further offset

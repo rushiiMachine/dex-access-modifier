@@ -4,6 +4,7 @@ version = "1.0.0"
 plugins {
     id("com.android.library")
     id("org.mozilla.rust-android-gradle.rust-android")
+    id("maven-publish")
 }
 
 android {
@@ -36,4 +37,37 @@ cargo {
 tasks.whenTaskAdded {
     if (listOf("mergeDebugJniLibFolders", "mergeReleaseJniLibFolders").contains(this.name))
         dependsOn("cargoBuild")
+}
+
+task<Jar>("sourcesJar") {
+    from(android.sourceSets.named("main").get().java.srcDirs)
+    archiveClassifier.set("sources")
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            register("dex-access-modifier", MavenPublication::class) {
+                artifactId = "dex-access-modifier"
+                artifact(tasks["bundleLibCompileToJarRelease"].outputs.files.singleFile)
+                artifact(tasks["bundleReleaseAar"])
+                artifact(tasks["sourcesJar"])
+            }
+        }
+
+        repositories {
+            val username = System.getenv("MAVEN_USERNAME")
+            val password = System.getenv("MAVEN_PASSWORD")
+
+            if (username == null || password == null)
+                mavenLocal()
+            else maven {
+                credentials {
+                    this.username = username
+                    this.password = password
+                }
+                setUrl("https://redditvanced.ddns.net/maven/releases")
+            }
+        }
+    }
 }

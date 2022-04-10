@@ -1,11 +1,12 @@
 use std::{fs, panic};
-use std::ptr::slice_from_raw_parts;
 use std::time::SystemTime;
 
 use adler32::RollingAdler32;
-use jni::JNIEnv;
-use jni::objects::{JClass, JString};
-use jni::sys::jobjectArray;
+use jni::{
+    JNIEnv,
+    objects::{JClass, JString},
+};
+use jni_fn::jni_fn;
 use log::{debug, info, warn};
 
 use crate::structures::structures::{ClassDefItem, DexFileHeader};
@@ -14,20 +15,22 @@ use crate::uleb128::uleb128::{read_uleb128, write_uleb128};
 mod uleb128;
 mod structures;
 
-#[no_mangle]
-pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_init(
+#[jni_fn("com.github.diamondminer88.dexaccessmodifier.DexAccessModifier")]
+pub fn init(
     env: JNIEnv,
     _class: JClass,
     log_level: JString,
 ) {
+    let log_level: String = env.get_string(log_level).unwrap().into();
+
     android_logd_logger::builder()
-        .parse_filters(env.get_string(log_level).unwrap().to_str().unwrap())
+        .parse_filters(log_level.as_str())
         .prepend_module(false)
         .init();
 }
 
-#[no_mangle]
-pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString) {
+#[jni_fn("com.github.diamondminer88.dexaccessmodifier.DexAccessModifier")]
+pub unsafe fn run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString) {
     let input_path: String = env.get_string(input_path_).unwrap().into();
     let output_path: String = env.get_string(output_path_).unwrap().into();
 

@@ -78,7 +78,9 @@ unsafe fn modify_dex(bytes: &Vec<u8>) {
     let class_defs_ptr = u32_ptr_offset(bytes.as_ptr(), header.class_defs_offset);
     for class_def_idx in 0..(header.class_defs_size) {
         let class_def = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
+
         class_def.access_flags = update_access_flags(class_def.access_flags);
+        class_def.access_flags = class_def.access_flags & !access_flags::ACC_FINAL;
 
         debug!("Parsing class at offset: {:#04x}", class_def.class_data_offset);
         if class_def.class_data_offset == 0 { continue; } // no data for this class

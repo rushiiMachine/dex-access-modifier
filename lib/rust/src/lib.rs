@@ -27,16 +27,9 @@ pub extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAcces
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString, class_filters_: jobjectArray) {
+pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_DexAccessModifier_run(env: JNIEnv, _class: JClass, input_path_: JString, output_path_: JString) {
     let input_path: String = env.get_string(input_path_).unwrap().into();
     let output_path: String = env.get_string(output_path_).unwrap().into();
-
-    let mut class_filters = vec![];
-    for i in 0..(env.get_array_length(class_filters_).unwrap()) {
-        let elem: JString = env.get_object_array_element(class_filters_, i).unwrap().into();
-        let filter: String = env.get_string(elem).unwrap().into();
-        class_filters.push(filter);
-    }
 
     let bytes = match fs::read(input_path.clone()) {
         Ok(data) => data,
@@ -47,7 +40,7 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
     };
 
     let now = SystemTime::now();
-    let result = panic::catch_unwind(|| { modify_dex(&bytes, class_filters) });
+    let result = panic::catch_unwind(|| { modify_dex(&bytes) });
     if let Err(error) = result {
         let msg = match error.downcast_ref::<&'static str>() {
             Some(s) => *s,
@@ -70,7 +63,7 @@ pub unsafe extern "system" fn Java_com_github_diamondminer88_dexaccessmodifier_D
 }
 
 #[allow(unaligned_references)]
-unsafe fn modify_dex(bytes: &Vec<u8>, class_filters: Vec<String>) {
+unsafe fn modify_dex(bytes: &Vec<u8>) {
     let header = ptr_to_struct_with_offset::<DexFileHeader>(bytes.as_ptr(), 0);
 
     if header.endian_tag != endian_constants::LITTLE_ENDIAN {
@@ -79,28 +72,9 @@ unsafe fn modify_dex(bytes: &Vec<u8>, class_filters: Vec<String>) {
 
     if header.class_defs_offset == 0 { return; } // no class defs
 
-    let mut ignored_type_id_idxs = vec![];
-    if !class_filters.is_empty() && header.string_ids_offset != 0 && header.type_ids_offset != 0 {
-        for type_id_idx in 0..(header.type_ids_size) {
-            let type_id = *(u32_ptr_offset(bytes.as_ptr(), header.type_ids_offset + type_id_idx * 4) as *const u32);
-            let string_data_offset = *(u32_ptr_offset(bytes.as_ptr(), header.string_ids_offset + type_id * 4) as *const u32);
-
-            let string_length_uleb = read_uleb128(bytes.as_ptr(), string_data_offset).unwrap();
-            let string_data = &*slice_from_raw_parts(u32_ptr_offset(bytes.as_ptr(), string_data_offset + string_length_uleb.length as u32), string_length_uleb.value as usize);
-            for filter in class_filters.iter() {
-                if string_data.starts_with(filter.as_bytes()) {
-                    ignored_type_id_idxs.push(type_id_idx);
-                }
-            }
-        }
-    }
-
-    debug!("Ignored type ids: {:?}", ignored_type_id_idxs);
-
     let class_defs_ptr = u32_ptr_offset(bytes.as_ptr(), header.class_defs_offset);
     for class_def_idx in 0..(header.class_defs_size) {
         let class_def = ptr_to_struct_with_offset::<ClassDefItem>(class_defs_ptr, 0x20 * class_def_idx);
-        if ignored_type_id_idxs.contains(&class_def.class_idx) { continue; } // Class ignored
         class_def.access_flags = update_access_flags(class_def.access_flags);
 
         debug!("Parsing class at offset: {:#04x}", class_def.class_data_offset);

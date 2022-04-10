@@ -40,7 +40,6 @@ class MainActivity : AppCompatActivity() {
                                 lib.run(
                                     f.absolutePath,
                                     "$basePath/${f.nameWithoutExtension}_modified.dex",
-                                    arrayOf("Landroid", "Lcom/discord/app/App;")
                                 )
                             } catch (t: Throwable) {
                                 t.printStackTrace()

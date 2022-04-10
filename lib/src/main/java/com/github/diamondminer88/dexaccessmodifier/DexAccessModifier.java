@@ -26,8 +26,6 @@ public class DexAccessModifier {
      * Run the access modifier on a certain dex file
      * @param inputPath Input file
      * @param outputPath Output file
-     * @param classFilters Classes to ignore from modifying. Each class will be checked if it STARTS WITH one of the filters.
-     * Example: "Landroid", "Lcom/discord/app/App;".
      */
-    public native void run(String inputPath, String outputPath, String[] classFilters);
+    public native void run(String inputPath, String outputPath);
 }
